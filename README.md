@@ -1,7 +1,9 @@
+![Static Badge](https://img.shields.io/badge/dsci-320-%23CDEBF3?style=flat&color=%23CDEBF3)  
+![](https://img.shields.io/badge/license-CC0%201.0-green.svg?style=flat)
+
 # Data Sources
 
 ## Hypothalamic Preoptic Region Single-Cell Dataset
-![](https://img.shields.io/badge/license-CC0%201.0-green.svg?style=flat)
 
 The dataset provides molecular, spatial, and functional single-cell profiling of the hypothalamic preoptic region using MERFISH. It was retrieved from the study: "Molecular, spatial and functional single-cell profiling of the hypothalamic preoptic region" by Moffitt et al. (2018) published in *Science* ([DOI: 10.1126/science.aau5324](https://doi.org/10.1126/science.aau5324)). The raw data can be downloaded directly from [Dryad](https://doi.org/10.5061/dryad.8t8s248).
 

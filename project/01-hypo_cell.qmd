@@ -1,0 +1,247 @@
+---
+title: "Experiment with hypothalamic cell analysis" 
+subtitle: "MERFISH data" 
+---
+
+```{python}
+import pandas as pd
+import numpy as np
+import squidpy as sq
+import scanpy as sc
+
+import altair as alt
+import anndata as ad
+```
+
+```{python}
+anndata = pd.read_csv('data/Moffitt_and_Bambah-Mukku_et_al_merfish_all_cells.csv')
+```
+
+```{python}
+print("The number of gene columns:", len(anndata.columns.tolist()))
+```
+
+```{python}
+anndata.head(10)
+
+```
+
+```{python}
+anndata.info()
+```
+
+```{python}
+anndata.describe().head(3)
+```
+
+```{python}
+anndata['Animal_ID'].unique()
+```
+
+> We have 30 animals!
+
+```{python}
+colnames = anndata.columns.tolist()
+len(colnames)
+```
+
+> There are 170 columns in the raw data!
+
+#### Check NA
+
+```{python}
+na_counts = anndata.isna().sum()
+columns_with_na = na_counts[na_counts > 0]
+print("Columns with NA values and their counts:")
+print(columns_with_na)
+
+# List only the column names
+print("\nColumn names with NA values:")
+print(columns_with_na.index.tolist())
+
+# Total number of columns with NA
+print(f"\nNumber of columns with NA values: {len(columns_with_na)}")
+```
+
+### Extract metadata
+
+```{python}
+metadata_cols = ['Cell_ID',
+                 'Animal_ID',
+                 'Animal_sex',
+                 'Behavior',
+                 'Bregma',
+                 'Centroid_X',
+                 'Centroid_Y',
+                 'Cell_class',
+                 'Neuron_cluster_ID']
+```
+
+```{python}
+gene_cols = [col for col in anndata.columns 
+                 if col not in metadata_cols]
+```
+
+#### Object creation
+
+```{python}
+obs = anndata[metadata_cols]
+X = anndata[gene_cols]
+```
+
+#### NA handles
+
+```{python}
+obs['Neuron_cluster_ID'] = obs['Neuron_cluster_ID'].fillna('Non-Neuron')
+X = X.astype(np.float64).fillna(0)
+X = np.asarray(X, dtype = np.float64)
+```
+
+### Create AnnData!
+
+```{python}
+adata = ad.AnnData(X = X, obs = obs, var = pd.DataFrame(index = gene_cols), dtype=np.float64)
+```
+
+```{python}
+adata.obsm['spatial'] = obs[['Centroid_X', 'Centroid_Y']].values
+```
+
+```{python}
+print(adata)
+```
+
+#### Data Preprocesing
+
+1.  Remove low-quality cells / genes (quality control)
+
+```{python}
+sc.pp.filter_cells(adata, min_genes = 10)
+sc.pp.filter_genes(adata, min_cells = 3)
+```
+
+2.  Normalize and log-transform
+
+```{python}
+sc.pp.normalize_total(adata,target_sum = 1e4)
+sc.pp.log1p(adata)
+```
+
+#### Clustering & Cell Type Annotation
+
+1.  PCA & neighbors
+
+```{python}
+sc.pp.pca(adata, n_comps = 20)
+sc.pp.neighbors(adata, n_pcs = 20)
+```
+
+2.  Leiden clustering
+
+    \*\*\*
+
+```{python}
+sc.tl.leiden(adata, resolution = .5, random_state=42)
+```
+
+3.  Anotate using Cell class
+
+```{python}
+adata.obs['cell_type'] = adata.obs['Cell_class'].replace('Ambiguous', 'Other')
+```
+
+### Differential Expression and Spatial Analysis
+
+(from Chat)
+
+```{python}
+# DE analysis by cell_type
+sc.tl.rank_genes_groups(adata, groupby='cell_type', method='wilcoxon')
+markers = sc.get.rank_genes_groups_df(adata, group=None)
+
+# Spatial autocorrelation for Gad1, Slc17a7
+sq.gr.spatial_neighbors(adata, coord_type='generic', spatial_key='spatial')
+sq.gr.spatial_autocorr(adata, mode='moran', genes=['Gad1', 'Slc17a7'])
+print(adata.uns['moranI'])
+
+# Optional: Subset for Fos analysis (non-NA cells)
+adata_fos = adata[adata.X[:, adata.var.index == 'Fos'] > 0].copy()
+if adata_fos.n_obs > 0:
+    sq.gr.spatial_autocorr(adata_fos, mode='moran', genes=['Fos'])
+```
+
+##### **Subset for Visualization**:
+
+-   Focus on a Bregma level (e.g., -9) to reduce data size.
+
+```{python}
+adata_subset = adata.copy()
+```
+
+### Visualization with `Altair`
+
+```{python}
+# DataFrame for Bregma -9
+df = pd.DataFrame({
+    'x': adata_subset.obsm['spatial'][:, 0],
+    'y': adata_subset.obsm['spatial'][:, 1],
+    'cell_type': adata_subset.obs['cell_type'],
+    'log_expr_Gad1': adata_subset[:, 'Gad1'].X.toarray().flatten(),
+    'log_expr_Slc17a7': adata_subset[:, 'Slc17a7'].X.toarray().flatten(),
+'bregma': adata.obs['Bregma']})
+```
+
+### Downsampling:
+
+> For Vis
+
+```{python}
+df_viz = df.sample(frac=0.3, random_state=42).reset_index(drop=True)
+
+print('Viz DataFrame shape:', df_viz.shape)  # Should be >5k now
+print('Sample data head:\n', df_viz.head())  # Verify non-zero values
+```
+
+```{python}
+alt.data_transformers.enable("vegafusion")
+chart_cell_types = alt.Chart(df_viz).mark_circle(size=15).encode(x='x:Q',
+                                        y=alt.Y('y:Q', scale=alt.Scale(reverse=True)),
+                                        color='cell_type:N',
+                                        tooltip=['x', 'y', 'cell_type']).properties(width=600, height=400,
+                                        title='Cell Types in Hypothalamic Preoptic Region').interactive()
+chart_cell_types.save('cell_types_map.html')
+```
+
+```{python}
+base = alt.Chart(df_viz).mark_circle(size=10, opacity=0.3).encode(
+    x='x:Q', y='y:Q', color=alt.value('gray')
+)
+overlay_gad1 = alt.Chart(df_viz).mark_circle(size=20).encode(
+    x='x:Q', y='y:Q',
+    color=alt.Color('log_expr_Gad1:Q', scale=alt.Scale(scheme='viridis')),
+    tooltip=['x', 'y', 'log_expr_Gad1', 'cell_type']
+)
+overlay_slc17a7 = alt.Chart(df_viz).mark_circle(size=20, opacity=0.5).encode(
+    x='x:Q', y='y:Q',
+    color=alt.Color('log_expr_Slc17a7:Q', scale=alt.Scale(scheme='plasma')),
+    tooltip=['x', 'y', 'log_expr_Slc17a7', 'cell_type']
+)
+layered_map = (base + overlay_gad1 + overlay_slc17a7).interactive().properties(
+    title='Gad1 (Viridis) and Slc17a7 (Plasma) Overlay on Brain Coordinates'
+)
+layered_map
+```
+
+```{python}
+
+faceted_chart = alt.Chart(df_viz).mark_circle(size=15).encode(
+    x='x:Q', y='y:Q',
+    color='log_expr_Gad1:Q',
+    tooltip=['x', 'y', 'bregma', 'cell_type']
+).facet(
+    column='bregma:N'
+).properties(
+    title='Gad1 Expression Across Bregma Levels'
+).interactive()
+faceted_chart.save('faceted_brain_map.html')
+```

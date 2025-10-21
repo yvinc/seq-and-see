@@ -14,7 +14,8 @@ import anndata as ad
 ```
 
 ```{python}
-anndata = pd.read_csv('data/Moffitt_and_Bambah-Mukku_et_al_merfish_all_cells.csv')
+anndata = pd.read_csv('data/Moffitt_and_Bambah-Mukku_et_al_merfish_all_cells.csv',
+                        chunksize=100000)
 ```
 
 ```{python}
@@ -41,27 +42,47 @@ anndata['Animal_ID'].unique()
 > We have 30 animals!
 
 ```{python}
+print("Unique Neuron cluster ID: ", anndata['Neuron_cluster_ID'].unique())
+print("Unique Cell Class: ", anndata['Cell_class'].unique())
+
+```
+
+> -   Unique Neuron cluster ID: \[nan 'I-5' 'I-6' 'I-9' 'I-26' 'I-35' 'I-21' 'I-20' 'I-25' 'I-17' 'E-24' 'I-8' 'I-1' 'E-21' 'I-4' 'I-10' 'E-6' 'I-3' 'E-22' 'I-29' 'I-7' 'E-12' 'H-1' 'E-17' 'E-13' 'I-18' 'I-22' 'I-13' 'I-23' 'I-24' 'I-33' 'E-4' 'E-11' 'I-2' 'I-30' 'E-18' 'I-36' 'E-30' 'E-20' 'E-27' 'I-37' 'E-14' 'E-2' 'I-19' 'I-34' 'I-16' 'E-3' 'I-11' 'E-15' 'E-1' 'E-26' 'E-10' 'I-27' 'E-7' 'I-12' 'E-25' 'E-8' 'E-19' 'I-15' 'E-16' 'E-29' 'I-39' 'E-5' 'I-14' 'E-23' 'E-28' 'I-31' 'E-9' 'I-32' 'E-31' 'I-38'\]
+>
+> <!-- -->
+>
+> -   Unique Cell Class: \['Astrocyte' 'Inhibitory' 'OD Mature 2' 'Endothelial 1' 'Ambiguous' 'Pericytes' 'Endothelial 2' 'OD Mature 1' 'OD Immature 1' 'Excitatory' 'Microglia' 'Endothelial 3' 'OD Mature 4' 'OD Immature 2' 'OD Mature 3' 'Ependymal'\]
+
+```{python}
 colnames = anndata.columns.tolist()
 len(colnames)
 ```
 
 > There are 170 columns in the raw data!
 
-#### Check NA
+### Downsizing: Filter by neuronal class (Include `Excitatory` / `Inhibitory`; exclude 'Ambiguous')
 
 ```{python}
-na_counts = anndata.isna().sum()
-columns_with_na = na_counts[na_counts > 0]
-print("Columns with NA values and their counts:")
-print(columns_with_na)
+anndata_filtered = anndata[anndata['Cell_class'].isin(['Excitatory','Inhibitory']) &
+        (anndata['Cell_class'] != 'Ambiguous')].copy()
+anndata_filtered.sample(10)
 
-# List only the column names
-print("\nColumn names with NA values:")
-print(columns_with_na.index.tolist())
-
-# Total number of columns with NA
-print(f"\nNumber of columns with NA values: {len(columns_with_na)}")
 ```
+
+```{python}
+print("Unique Cell Class after Filtering: ", anndata_filtered['Cell_class'].unique())
+
+print("Number of Cell Rows after Filtering: ", len(anndata_filtered))
+```
+
+### Export Downsized Data (Downsized by `Excitatory` / `Inhibitory` class)
+
+```{python}
+anndata_filtered.to_csv('data/proccesed/filtered_neurons.csv', index=False)
+print(anndata_filtered.shape)
+```
+
+> Number of Cell Rows after Filtering: 468024
 
 ### Extract metadata
 

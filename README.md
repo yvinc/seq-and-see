@@ -23,7 +23,7 @@ The dataset, `Moffitt_and_Bambah-Mukku_et_al_merfish_all_cells.csv`, contains pr
 
 -   **Centroid X/Y**: Cell centroid coordinates in µm.
 
--   **Cell class**: Major cell class (e.g., 'Ambiguous' for putative doublets).
+-   **Cell class**: Major cell class (e.g., 'Ambiguous' for putative doublets, 'Excitatory' for excitatory neuronal class, 'Inhibitory' for inhibitory neuronal class).
 
 -   **Neuron cluster_ID**: Neuronal cluster assignment (empty for non-neurons).
 

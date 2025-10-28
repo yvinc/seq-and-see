@@ -14,105 +14,7 @@ import anndata as ad
 ```
 
 ```{python}
-# Load with low-memory mode and specify dtypes for efficiency
-# dtypes = {'Animal_ID': 'int8', 'Animal_sex': 'category', 'Behavior': 'category', 
-#           'Bregma': 'float32', 'Cell_class': 'category', 'Neuron_cluster_ID': 'category',
-#           'Centroid_X': 'float32', 'Centroid_Y': 'float32'}
-
-# Add 'float32' for all gene columns if known, else let pandas infer but optimize later
-df = pd.read_csv('data/Moffitt_and_Bambah-Mukku_et_al_merfish_all_cells.csv',
-                 # dtype=dtypes, 
-                 low_memory=False)
-```
-
-```{python}
-print("The number of gene columns:", len(df.columns.tolist()))
-```
-
-> The number of gene columns: 170
-
-```{python}
-df.head(10)
-
-```
-
-```{python}
-df.info()
-```
-
-```{python}
-df.describe().head(3)
-```
-
-```{python}
-# Basic EDA: Check shapes, unique values:
-
-print(df.shape)  # ~ (1000000, 170) expected
-print(df['Cell_class'].value_counts(normalize=True))  # Proportions of cell classes
-
-print(df.groupby('Animal_ID').size())  # Cells per animal (likely 8 animals)
-```
-
-```{python}
-df['Animal_ID'].unique()
-```
-
-> We have 30 animals!
-
-```{python}
-print("Unique Neuron cluster ID: ", df['Neuron_cluster_ID'].unique())
-print("Unique Cell Class: ", df['Cell_class'].unique())
-
-print("Cell Cluster Lables: ", df['Neuron_cluster_ID'].unique())
-
-```
-
-> -   Unique Neuron cluster ID: \[nan 'I-5' 'I-6' 'I-9' 'I-26' 'I-35' 'I-21' 'I-20' 'I-25' 'I-17' 'E-24' 'I-8' 'I-1' 'E-21' 'I-4' 'I-10' 'E-6' 'I-3' 'E-22' 'I-29' 'I-7' 'E-12' 'H-1' 'E-17' 'E-13' 'I-18' 'I-22' 'I-13' 'I-23' 'I-24' 'I-33' 'E-4' 'E-11' 'I-2' 'I-30' 'E-18' 'I-36' 'E-30' 'E-20' 'E-27' 'I-37' 'E-14' 'E-2' 'I-19' 'I-34' 'I-16' 'E-3' 'I-11' 'E-15' 'E-1' 'E-26' 'E-10' 'I-27' 'E-7' 'I-12' 'E-25' 'E-8' 'E-19' 'I-15' 'E-16' 'E-29' 'I-39' 'E-5' 'I-14' 'E-23' 'E-28' 'I-31' 'E-9' 'I-32' 'E-31' 'I-38'\]
->
-> <!-- -->
->
-> -   Unique Cell Class: \['Astrocyte' 'Inhibitory' 'OD Mature 2' 'Endothelial 1' 'Ambiguous' 'Pericytes' 'Endothelial 2' 'OD Mature 1' 'OD Immature 1' 'Excitatory' 'Microglia' 'Endothelial 3' 'OD Mature 4' 'OD Immature 2' 'OD Mature 3' 'Ependymal'\]
-
-```{python}
-colnames = df.columns.tolist()
-len(colnames)
-```
-
-> There are 170 columns in the raw data!
-
-### Downsizing Data
-
-```{python}
-# Separate neurons and non-neurons
-neurons = df[df['Cell_class'].isin(['Inhibitory', 'Excitatory'])]
-non_neurons = df[~df['Cell_class'].isin(['Inhibitory', 'Excitatory'])]
-print(f"Original: {len(neurons):,} neurons, {len(non_neurons):,} non-neurons")
-```
-
-```{python}
-# Sample: keep 50% of neurons, 3% of non-neurons → ~100k total
-neurons_sample = neurons.sample(frac = 0.5, random_state = 42)
-non_neurons_sample = non_neurons.sample(frac = 0.03, random_state = 42)
-```
-
-```{python}
-# Combine and shuffle
-df_sample = pd.concat([neurons_sample, non_neurons_sample], 
-                      ignore_index=True)
-df_sample = df_sample.sample(frac = 1, random_state=42).reset_index(drop=True)
-```
-
-```{python}
-print(f"Sampled: {len(df_sample):,} cells")
-print(f"Final memory: {df_sample.memory_usage(deep=True).sum() / 1e6:.1f} MB")
-print(df_sample['Cell_class'].value_counts())
-```
-
-### Export Downsized Data (Downsized by `Excitatory` / `Inhibitory` class)
-
-```{python}
-df_sample.to_csv('data/processed/merfish_sample_100k.csv', index=False)
-print("Saved sampled data for group use.")
+anndata_filtered = pd.read_csv('data/processed/merfish_sample_100k.csv')
 ```
 
 > Number of Cell Rows after Filtering: 468024
@@ -132,22 +34,21 @@ metadata_cols = ['Cell_ID',
 ```
 
 ```{python}
-gene_cols = [col for col in df_sample.columns 
+gene_cols = [col for col in anndata_filtered.columns 
                  if col not in metadata_cols]
 ```
 
 #### Object creation
 
 ```{python}
-obs = df_sample[metadata_cols]
-X = df_sample[gene_cols]
+obs = anndata_filtered[metadata_cols]
+X = anndata_filtered[gene_cols]
 ```
 
 #### NA handles
 
 ```{python}
 obs['Neuron_cluster_ID'] = obs['Neuron_cluster_ID'].fillna('Non-Neuron')
-
 X = X.astype(np.float64).fillna(0)
 X = np.asarray(X, dtype = np.float64)
 ```
@@ -155,9 +56,7 @@ X = np.asarray(X, dtype = np.float64)
 ### Create AnnData!
 
 ```{python}
-adata = ad.AnnData(X = X, # X for gene columns
-                   obs = obs, # obs for metadata columns
-                   var = pd.DataFrame(index = gene_cols), dtype=np.float64)
+adata = ad.AnnData(X = X, obs = obs, var = pd.DataFrame(index = gene_cols), dtype=np.float64)
 ```
 
 ```{python}
@@ -180,29 +79,25 @@ sc.pp.filter_genes(adata, min_cells = 3)
 2.  Normalize and log-transform
 
 ```{python}
-sc.pp.normalize_total(adata, target_sum = 1e4)
+sc.pp.normalize_total(adata,target_sum = 1e4)
 sc.pp.log1p(adata)
 ```
 
 #### Clustering & Cell Type Annotation
 
-0.  HVGs (Highly Variable Genes)
-
-```{python}
-sc.pp.highly_variable_genes(adata, n_top_genes = 100)  
-```
-
 1.  PCA & neighbors
 
 ```{python}
-sc.pp.pca(adata, n_comps = 20)
-sc.pp.neighbors(adata)
+sc.pp.pca(adata, n_comps = 15)
+sc.pp.neighbors(adata, n_pcs = 15)
 ```
 
 2.  Leiden clustering
 
+    \*\*\*
+
 ```{python}
-sc.tl.leiden(adata, resolution = .5, random_state = 42)
+sc.tl.leiden(adata, resolution = .5, random_state=42, n_iterations=2, flavor="igraph")
 ```
 
 3.  Anotate using Cell class
